@@ -24,8 +24,8 @@ data:
   # Transaction service
   SERVER_PORT: "8080"
 
-  # CORS — update to match your ingress/NodePort URL
-  FRONTEND_ORIGIN: http://192.168.0.10:3000
+  # CORS — frontend NodePort URL (any k8s node IP works)
+  FRONTEND_ORIGIN: http://192.168.0.40:30300
 
 ---
 apiVersion: v1
