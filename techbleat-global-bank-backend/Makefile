@@ -156,6 +156,16 @@ stop-all: stop stop-frontend stop-infra
 	docker network rm $(NETWORK) 2>/dev/null || true
 
 # ── Kubernetes ────────────────────────────────────────────────────────────────
+# Build frontend image with NodePort-based API URLs for Kubernetes
+# VITE_* vars are baked in at build time — must match NodePorts in k8s/apps/*.yaml
+.PHONY: build-frontend-k8s
+build-frontend-k8s:
+	docker build \
+	  --build-arg VITE_USER_API=http://$(HOST_IP):30800 \
+	  --build-arg VITE_TX_API=http://$(HOST_IP):30808 \
+	  --build-arg VITE_ACTIVITY_API=http://$(HOST_IP):30801 \
+	  -t $(IMAGE_FRONTEND) $(FRONTEND_DIR)
+
 .PHONY: k8s-deploy
 k8s-deploy:
 	kubectl apply -f k8s/namespace.yaml
@@ -167,6 +177,7 @@ k8s-deploy:
 	kubectl apply -f k8s/apps/user-service.yaml
 	kubectl apply -f k8s/apps/transaction-service.yaml
 	kubectl apply -f k8s/apps/activity-service.yaml
+	kubectl apply -f k8s/apps/frontend.yaml
 
 .PHONY: k8s-status
 k8s-status:
