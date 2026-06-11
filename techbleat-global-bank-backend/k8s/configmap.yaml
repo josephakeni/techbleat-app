@@ -24,8 +24,8 @@ data:
   # Transaction service
   SERVER_PORT: "8080"
 
-  # CORS — frontend NodePort URL (any k8s node IP works)
-  FRONTEND_ORIGIN: http://192.168.0.40:30300
+  # CORS — all k8s node IPs accepted (NodePort accessible on any node)
+  FRONTEND_ORIGIN: http://192.168.0.40:30300,http://192.168.0.41:30300,http://192.168.0.42:30300
 
 ---
 apiVersion: v1

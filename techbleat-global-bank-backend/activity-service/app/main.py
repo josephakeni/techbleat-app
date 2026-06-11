@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, text
 DATABASE_URL = os.getenv("DATABASE_URL")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+ALLOWED_ORIGINS = [o.strip() for o in FRONTEND_ORIGIN.split(",")] + ["http://127.0.0.1:3000"]
 
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is required")
@@ -21,7 +22,7 @@ app = FastAPI(title="Techbleat Global Bank - Activity Service")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN, "http://127.0.0.1:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

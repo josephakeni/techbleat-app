@@ -5,6 +5,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.Arrays;
+import java.util.stream.Stream;
+
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
@@ -13,8 +16,13 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        String[] origins = Stream.concat(
+                Arrays.stream(frontendOrigin.split(",")).map(String::trim),
+                Stream.of("http://127.0.0.1:3000")
+        ).toArray(String[]::new);
+
         registry.addMapping("/**")
-                .allowedOrigins(frontendOrigin, "http://127.0.0.1:3000")
+                .allowedOrigins(origins)
                 .allowedMethods("*")
                 .allowedHeaders("*");
     }
