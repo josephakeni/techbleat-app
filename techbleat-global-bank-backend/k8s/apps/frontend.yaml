@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: techbleat/frontend:latest
+          image: jakeni/techbleat-frontend:latest
           ports:
             - containerPort: 80
           readinessProbe:

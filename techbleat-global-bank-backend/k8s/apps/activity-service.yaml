@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: activity-service
-          image: techbleat/activity-service:latest
+          image: jakeni/techbleat-activity-service:latest
           ports:
             - containerPort: 8001
           env:

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: transaction-service
-          image: techbleat/transaction-service:latest
+          image: jakeni/techbleat-transaction-service:latest
           ports:
             - containerPort: 8080
           env:

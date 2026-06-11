@@ -1,4 +1,4 @@
-REGISTRY      ?= techbleat
+REGISTRY      ?= jakeni
 TAG           ?= latest
 NETWORK        = techbleat-net
 HOST_IP       ?= 192.168.0.10
@@ -6,10 +6,10 @@ FRONTEND      ?= http://$(HOST_IP):3000
 FRONTEND_DIR  ?= ../techbleat-global-bank-frontend
 
 # ── Images ────────────────────────────────────────────────────────────────────
-IMAGE_USER     = $(REGISTRY)/user-service:$(TAG)
-IMAGE_TX       = $(REGISTRY)/transaction-service:$(TAG)
-IMAGE_ACT      = $(REGISTRY)/activity-service:$(TAG)
-IMAGE_FRONTEND = $(REGISTRY)/frontend:$(TAG)
+IMAGE_USER     = $(REGISTRY)/techbleat-user-service:$(TAG)
+IMAGE_TX       = $(REGISTRY)/techbleat-transaction-service:$(TAG)
+IMAGE_ACT      = $(REGISTRY)/techbleat-activity-service:$(TAG)
+IMAGE_FRONTEND = $(REGISTRY)/techbleat-frontend:$(TAG)
 
 # ── Network ───────────────────────────────────────────────────────────────────
 .PHONY: network
