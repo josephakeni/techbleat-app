@@ -50,7 +50,7 @@ services:
     container_name: user-service
     environment:
       DATABASE_URL: postgresql://bankuser:bankpass@postgres:5432/bankingdb
-      FRONTEND_ORIGIN: http://localhost:3000
+      FRONTEND_ORIGIN: http://192.168.0.10:3000
     ports:
       - "8000:8000"
 
@@ -66,7 +66,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SERVER_PORT: 8080
-      FRONTEND_ORIGIN: http://localhost:3000
+      FRONTEND_ORIGIN: http://192.168.0.10:3000
     ports:
       - "8080:8080"
 
@@ -76,7 +76,7 @@ services:
     environment:
       DATABASE_URL: postgresql://bankuser:bankpass@postgres:5432/bankingdb
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      FRONTEND_ORIGIN: http://localhost:3000
+      FRONTEND_ORIGIN: http://192.168.0.10:3000
     ports:
       - "8001:8001"
 

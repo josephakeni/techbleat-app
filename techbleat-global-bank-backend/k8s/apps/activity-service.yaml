@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: activity-service
+  namespace: techbleat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: activity-service
+  template:
+    metadata:
+      labels:
+        app: activity-service
+    spec:
+      containers:
+        - name: activity-service
+          image: techbleat/activity-service:latest
+          ports:
+            - containerPort: 8001
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: techbleat-secret
+                  key: DATABASE_URL
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: FRONTEND_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: FRONTEND_ORIGIN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 20
+            periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: activity-service
+  namespace: techbleat
+spec:
+  selector:
+    app: activity-service
+  type: NodePort
+  ports:
+    - port: 8001
+      targetPort: 8001
+      nodePort: 30801

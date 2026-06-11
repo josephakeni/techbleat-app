@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+  namespace: techbleat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: transaction-service
+  template:
+    metadata:
+      labels:
+        app: transaction-service
+    spec:
+      containers:
+        - name: transaction-service
+          image: techbleat/transaction-service:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: SPRING_DATASOURCE_URL
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: techbleat-secret
+                  key: SPRING_DATASOURCE_PASSWORD
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: SPRING_JPA_HIBERNATE_DDL_AUTO
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: KAFKA_BOOTSTRAP_SERVERS
+            - name: REDIS_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: REDIS_PORT
+            - name: SERVER_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: SERVER_PORT
+            - name: FRONTEND_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: techbleat-config
+                  key: FRONTEND_ORIGIN
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+  namespace: techbleat
+spec:
+  selector:
+    app: transaction-service
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30808

@@ -1,14 +1,14 @@
-# Techbleat Global Bank - Backend
+# Techbleat Global Bank — Backend
 
-A microservices-based banking platform built with Python (FastAPI), Java (Spring Boot), PostgreSQL, Redis, and Apache Kafka. The system handles user management, financial transactions, and activity logging through independent, event-driven services.
+A microservices-based banking platform built with Python (FastAPI), Java (Spring Boot), PostgreSQL, Redis, and Apache Kafka. Services are independently containerised and ready for Kubernetes deployment.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
                          ┌──────────────────┐
-                         │   Frontend (3000) │
+                         │  Frontend :3000  │
                          └────────┬─────────┘
                                   │
               ┌───────────────────┼───────────────────┐
@@ -21,14 +21,14 @@ A microservices-based banking platform built with Python (FastAPI), Java (Spring
             ▼                    ▼                       ▲
    ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐
    │   PostgreSQL    │  │      Redis       │  │      Kafka       │
-   │   Port 5432     │  │    Port 6379     │  │    Port 9092     │
+   │     :5432       │  │      :6379       │  │      :9092       │
    └─────────────────┘  └──────────────────┘  └──────────────────┘
 ```
 
 ### Services
 
 | Service | Language | Port | Responsibility |
-|---------|----------|------|----------------|
+|---|---|---|---|
 | user-service | Python / FastAPI | 8000 | User registration and account creation |
 | transaction-service | Java / Spring Boot | 8080 | Deposits, withdrawals, transfers, balance queries |
 | activity-service | Python / FastAPI | 8001 | Activity log via Kafka consumer |
@@ -36,7 +36,7 @@ A microservices-based banking platform built with Python (FastAPI), Java (Spring
 ### Infrastructure
 
 | Component | Version | Port | Purpose |
-|-----------|---------|------|---------|
+|---|---|---|---|
 | PostgreSQL | 15 | 5432 | Persistent data store |
 | Redis | 7 | 6379 | Balance caching |
 | Apache Kafka | 8.1.1 | 9092 | Event streaming between services |
@@ -45,53 +45,99 @@ A microservices-based banking platform built with Python (FastAPI), Java (Spring
 
 ## Prerequisites
 
-- [Docker](https://www.docker.com/get-started) 20.10+
-- [Docker Compose](https://docs.docker.com/compose/install/) v2+
+- Docker 20.10+
+- `make`
 
-No local installations of Python, Java, or any database are needed — everything runs inside containers.
+No local Python, Java, or database installations needed — everything runs in containers.
 
 ---
 
-## Running Locally
-
-### 1. Clone the repository
-
-```bash
-git clone <repository-url>
-cd techbleat-global-bank-backend
-```
-
-### 2. Start all services
+## Quick start (docker-compose)
 
 ```bash
 docker compose up --build
 ```
 
-This command will:
-- Build Docker images for all three services
-- Start PostgreSQL, Redis, and Kafka
-- Run the database initialisation script (`db-init/init.sql`)
-- Start all three application services
-
-### 3. Verify services are running
+Starts all services together. Suitable for local development.
 
 ```bash
-curl http://localhost:8000/health   # User Service
-curl http://localhost:8080/health   # Transaction Service
-curl http://localhost:8001/health   # Activity Service
+docker compose down        # stop
+docker compose down -v     # stop + wipe database
 ```
 
-### 4. Stop all services
+---
+
+## Individual containers (Makefile)
+
+Each service is built and run independently on a shared Docker network (`techbleat-net`). This is the recommended approach for pre-production testing and maps directly to Kubernetes.
+
+### Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `HOST_IP` | `192.168.0.10` | LAN IP of the host machine (used for CORS and frontend API URLs) |
+| `REGISTRY` | `techbleat` | Image registry prefix |
+| `TAG` | `latest` | Image tag |
+| `FRONTEND_DIR` | `../techbleat-global-bank-frontend` | Path to the frontend repo |
+
+### Common commands
 
 ```bash
-docker compose down
+# Build all backend images
+make build
+
+# Build all images including the frontend
+make build-all HOST_IP=192.168.0.10
+
+# Start infrastructure (Postgres, Redis, Kafka)
+make infra
+
+# Start backend services
+make run
+
+# Start frontend container
+make run-frontend
+
+# Full stack in one command (infra + backend + frontend)
+make deploy
+
+# Check running containers
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# View logs
+make logs-user
+make logs-transaction
+make logs-activity
+
+# Stop app services only (keep infra running)
+make stop
+
+# Stop and remove everything
+make stop-all
+
+# Rebuild and restart app services
+make restart
 ```
 
-To also remove volumes (wipes database data):
+### Push images to a registry
 
 ```bash
-docker compose down -v
+make build push REGISTRY=myregistry.io/techbleat TAG=v1.0.0
 ```
+
+---
+
+## CORS
+
+All backend services accept cross-origin requests only from `FRONTEND_ORIGIN`, which defaults to `http://<HOST_IP>:3000`.
+
+If the frontend is on a different host or port, rebuild and restart:
+
+```bash
+make stop run FRONTEND=http://myapp.example.com
+```
+
+When running with docker-compose, update `FRONTEND_ORIGIN` in `docker-compose.yml` then run `docker compose up -d`.
 
 ---
 
@@ -100,67 +146,41 @@ docker compose down -v
 ### User Service — `http://localhost:8000`
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | GET | `/health` | Health check |
 | POST | `/users` | Create a new user and bank account |
-| GET | `/users` | List all users |
+| GET | `/users` | List all registered users |
 
-**Create User**
-
+**Create user**
 ```bash
 curl -X POST http://localhost:8000/users \
   -H "Content-Type: application/json" \
   -d '{"id": "u001", "full_name": "Jane Doe", "email": "jane@example.com"}'
 ```
 
-Creating a user automatically initialises a bank account with a zero balance.
-
 ---
 
 ### Transaction Service — `http://localhost:8080`
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | GET | `/health` | Health check |
 | POST | `/transactions/deposit` | Deposit funds |
 | POST | `/transactions/withdraw` | Withdraw funds |
 | POST | `/transactions/transfer` | Transfer between accounts |
-| GET | `/balance/{userId}` | Get account balance (Redis-cached) |
+| GET | `/balance/{userId}` | Get cached balance |
 | GET | `/transactions/{userId}` | Get last 20 transactions |
 
-The user ID is passed via the `X-User-Id` request header for all write operations.
-
-**Deposit**
+Pass the user ID via the `X-User-Id` header on all write operations.
 
 ```bash
 curl -X POST http://localhost:8080/transactions/deposit \
-  -H "Content-Type: application/json" \
-  -H "X-User-Id: u001" \
+  -H "Content-Type: application/json" -H "X-User-Id: u001" \
   -d '{"amount": 500.00}'
-```
 
-**Withdraw**
-
-```bash
-curl -X POST http://localhost:8080/transactions/withdraw \
-  -H "Content-Type: application/json" \
-  -H "X-User-Id: u001" \
-  -d '{"amount": 100.00}'
-```
-
-**Transfer**
-
-```bash
 curl -X POST http://localhost:8080/transactions/transfer \
-  -H "Content-Type: application/json" \
-  -H "X-User-Id: u001" \
-  -d '{"toUserId": "u002", "amount": 50.00, "reference": "rent payment"}'
-```
-
-**Check Balance**
-
-```bash
-curl http://localhost:8080/balance/u001
+  -H "Content-Type: application/json" -H "X-User-Id: u001" \
+  -d '{"toUserId": "u002", "amount": 50.00}'
 ```
 
 ---
@@ -168,97 +188,127 @@ curl http://localhost:8080/balance/u001
 ### Activity Service — `http://localhost:8001`
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+|---|---|---|
 | GET | `/health` | Health check |
-| GET | `/activities/{userId}` | Get last 20 activity log entries |
+| GET | `/activities/{userId}` | Get last 20 activity entries |
 
-**Get Activities**
-
-```bash
-curl http://localhost:8001/activities/u001
-```
-
-Activities are written automatically when the Activity Service consumes transaction events from the Kafka topic `banking-transactions`.
+Activities are written automatically when the Activity Service consumes events from the Kafka topic `banking-transactions`.
 
 ---
 
-## Environment Variables
-
-The defaults below are pre-configured in `docker-compose.yml`. Override them if running services outside Docker.
+## Environment variables
 
 ### User Service & Activity Service
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+|---|---|---|
 | `DATABASE_URL` | `postgresql://bankuser:bankpass@postgres:5432/bankingdb` | PostgreSQL connection string |
 | `FRONTEND_ORIGIN` | `http://localhost:3000` | CORS allowed origin |
 
 ### Transaction Service
 
 | Variable | Default | Description |
-|----------|---------|-------------|
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/bankingdb` | JDBC connection URL |
-| `SPRING_DATASOURCE_USERNAME` | `bankuser` | Database username |
-| `SPRING_DATASOURCE_PASSWORD` | `bankpass` | Database password |
-| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Kafka broker address |
+|---|---|---|
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://postgres:5432/bankingdb` | JDBC URL |
+| `SPRING_DATASOURCE_USERNAME` | `bankuser` | DB username |
+| `SPRING_DATASOURCE_PASSWORD` | `bankpass` | DB password |
+| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Kafka broker |
 | `REDIS_HOST` | `redis` | Redis hostname |
 | `REDIS_PORT` | `6379` | Redis port |
-| `SERVER_PORT` | `8080` | Application port |
-
-### Activity Service
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `KAFKA_BOOTSTRAP_SERVERS` | `kafka:29092` | Kafka broker address |
+| `SERVER_PORT` | `8080` | App port |
+| `FRONTEND_ORIGIN` | `http://localhost:3000` | CORS allowed origin |
 
 ---
 
-## Database Schema
+## Database schema
 
-Initialised automatically on first startup via `db-init/init.sql`.
+Initialised automatically on first Postgres startup via `db-init/init.sql`.
 
 ```
 users          — id, full_name, email, created_at
-accounts       — user_id (FK), balance, updated_at
+accounts       — user_id, balance, updated_at
 transactions   — id, user_id, transaction_type, amount, reference, created_at
 activities     — id, user_id, activity_type, description, created_at
 ```
 
 ---
 
-## Event Flow
+## Event flow
 
-1. A client calls the Transaction Service (deposit / withdraw / transfer).
-2. The Transaction Service writes to PostgreSQL and publishes an event to the Kafka topic `banking-transactions`.
-3. The Activity Service consumes the Kafka event and writes an entry to the `activities` table.
-4. Balance reads are served from Redis cache; the cache is updated on each write.
-
----
-
-## Running Individual Services Locally (without Docker)
-
-### User Service / Activity Service (Python)
-
-```bash
-cd user-service           # or activity-service
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-DATABASE_URL=postgresql://bankuser:bankpass@localhost:5432/bankingdb \
-  uvicorn app.main:app --reload --port 8000
-```
-
-### Transaction Service (Java)
-
-```bash
-cd transaction-service
-./mvnw spring-boot:run
-```
-
-Requires Java 17+ and Maven installed locally. Infrastructure (PostgreSQL, Redis, Kafka) must be running separately.
+1. Client calls Transaction Service (deposit / withdraw / transfer)
+2. Transaction Service writes to PostgreSQL and publishes to Kafka topic `banking-transactions`
+3. Activity Service consumes the Kafka event and writes to the `activities` table
+4. Balance reads are served from Redis; cache is updated on every write
 
 ---
 
-## CORS
+## Kubernetes
 
-All services are configured to accept cross-origin requests from `http://localhost:3000` and `http://127.0.0.1:3000` to support the companion React frontend.
+Manifests are in `k8s/`. The layout maps directly to the individual container model above.
+
+```
+k8s/
+├── namespace.yaml          — techbleat namespace
+├── secret.yaml             — DB passwords (base64)
+├── configmap.yaml          — non-sensitive config + init.sql
+├── infra/
+│   ├── postgres.yaml       — StatefulSet + PVC (2Gi) + headless Service
+│   ├── redis.yaml          — Deployment + ClusterIP Service
+│   └── kafka.yaml          — StatefulSet (KRaft) + headless Service
+└── apps/
+    ├── user-service.yaml         — Deployment + NodePort :30800
+    ├── transaction-service.yaml  — Deployment + NodePort :30808
+    └── activity-service.yaml     — Deployment + NodePort :30801
+```
+
+### Deploy to a cluster
+
+```bash
+# 1. Push images to a registry your cluster can pull from
+make build push REGISTRY=myregistry.io/techbleat TAG=v1.0.0
+
+# 2. Update image references in k8s/apps/*.yaml
+
+# 3. Update FRONTEND_ORIGIN in k8s/configmap.yaml to your node IP
+
+# 4. Apply all manifests
+make k8s-deploy
+
+# 5. Check status
+make k8s-status
+
+# 6. Tear down
+make k8s-delete
+```
+
+When using NodePorts, update the frontend API URLs to:
+```
+VITE_USER_API=http://<node-ip>:30800
+VITE_TX_API=http://<node-ip>:30808
+VITE_ACTIVITY_API=http://<node-ip>:30801
+```
+
+---
+
+## Makefile reference
+
+| Target | Description |
+|---|---|
+| `make network` | Create `techbleat-net` Docker network |
+| `make infra` | Start Postgres, Redis, Kafka |
+| `make build` | Build backend service images |
+| `make build-frontend` | Build frontend Nginx image |
+| `make build-all` | Build all images (backend + frontend) |
+| `make run` | Start backend service containers |
+| `make run-frontend` | Start frontend container |
+| `make deploy` | Start infra + backend + frontend |
+| `make push` | Push images to registry |
+| `make logs-user` | Tail user-service logs |
+| `make logs-transaction` | Tail transaction-service logs |
+| `make logs-activity` | Tail activity-service logs |
+| `make stop` | Stop backend service containers |
+| `make stop-all` | Stop all containers + remove network |
+| `make restart` | Stop and restart backend services |
+| `make k8s-deploy` | Apply all Kubernetes manifests |
+| `make k8s-status` | Show pods and services in `techbleat` namespace |
+| `make k8s-delete` | Delete the `techbleat` namespace |
