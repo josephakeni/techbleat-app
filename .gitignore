@@ -1,0 +1,21 @@
+# K8s manifests live in techbleat-infra repo
+k8s/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Java
+target/
+*.jar
+*.class
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
