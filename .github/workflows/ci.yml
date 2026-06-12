@@ -2,18 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [dev, main]
+    branches: [main]
   pull_request:
     branches: [main]
 
 env:
-  DOCKERHUB_USERNAME: jakeni
+  IMAGE_PREFIX: ${{ secrets.DOCKERHUB_USERNAME }}/techbleat
 
 jobs:
-  # ── Tests ──────────────────────────────────────────────────────────────────
-
+  # ── Tests ─────────────────────────────────────────────────────────────────
   test-transaction-service:
-    name: Test / transaction-service (Java)
+    name: Test transaction-service (Java)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +28,7 @@ jobs:
         run: mvn test --no-transfer-progress
 
   test-frontend:
-    name: Test / frontend (Node)
+    name: Test frontend (Node)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,99 +47,90 @@ jobs:
         working-directory: techbleat-global-bank-frontend
         run: npm run build
 
-  # ── Build & Push ───────────────────────────────────────────────────────────
-
-  build-and-push:
-    name: Build & Push
-    if: github.event_name == 'push'
-    needs:
-      - test-transaction-service
-      - test-frontend
+  # ── Build & Push ──────────────────────────────────────────────────────────
+  build-backend:
+    name: Build ${{ matrix.service }}
+    needs: [test-transaction-service, test-frontend]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: techbleat-global-bank-backend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: user-service
+            context: ./techbleat-global-bank-backend/user-service
+          - service: activity-service
+            context: ./techbleat-global-bank-backend/activity-service
+          - service: transaction-service
+            context: ./techbleat-global-bank-backend/transaction-service
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build backend images
-        run: make build TAG=${{ github.sha }}
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      # Uses build-frontend-k8s so VITE_* API URLs are baked in with NodePort addresses.
-      # Override HOST_IP via a repository variable if your node IP differs from the Makefile default.
-      - name: Build frontend image
-        run: make build-frontend-k8s TAG=${{ github.sha }} HOST_IP=${{ vars.HOST_IP || '192.168.0.10' }}
-
-      - name: Push backend images
-        run: make push TAG=${{ github.sha }}
-
-      - name: Push frontend image
-        run: docker push jakeni/techbleat-frontend:${{ github.sha }}
-
-      - name: Retag and push as latest
-        run: |
-          for img in \
-            jakeni/techbleat-user-service \
-            jakeni/techbleat-transaction-service \
-            jakeni/techbleat-activity-service \
-            jakeni/techbleat-frontend; do
-            docker tag "${img}:${{ github.sha }}" "${img}:latest"
-            docker push "${img}:latest"
-          done
-
-  # ── Open Infra PR ──────────────────────────────────────────────────────────
-
-  open-infra-pr:
-    name: Open infra PR
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
-    needs: build-and-push
+  build-frontend:
+    name: Build frontend
+    needs: [test-transaction-service, test-frontend]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout infra repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
         with:
-          repository: josephakeni/techbleat-infra
-          token: ${{ secrets.INFRA_REPO_TOKEN }}
-          path: infra
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Bump image tags in k8s manifests
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./techbleat-global-bank-frontend
+          push: ${{ github.ref == 'refs/heads/main' }}
+          # CLUSTER_BASE_URL repo variable: the URL browsers use to reach the ingress.
+          # Default: http://192.168.0.41:30080  Update when you get a domain.
+          build-args: |
+            VITE_USER_API=${{ vars.CLUSTER_BASE_URL || 'http://192.168.0.41:30080' }}
+            VITE_TX_API=${{ vars.CLUSTER_BASE_URL || 'http://192.168.0.41:30080' }}
+            VITE_ACTIVITY_API=${{ vars.CLUSTER_BASE_URL || 'http://192.168.0.41:30080' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  # ── Trigger infra deployment ──────────────────────────────────────────────
+  trigger-deploy:
+    name: Trigger deployment
+    needs: [build-backend, build-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy workflow in techbleat-infra
         run: |
-          SHA="${{ github.sha }}"
-          cd infra
-          sed -i "s|jakeni/techbleat-user-service:[^ ]*|jakeni/techbleat-user-service:${SHA}|g" \
-            k8s/apps/user-service.yaml
-          sed -i "s|jakeni/techbleat-activity-service:[^ ]*|jakeni/techbleat-activity-service:${SHA}|g" \
-            k8s/apps/activity-service.yaml
-          sed -i "s|jakeni/techbleat-transaction-service:[^ ]*|jakeni/techbleat-transaction-service:${SHA}|g" \
-            k8s/apps/transaction-service.yaml
-          sed -i "s|jakeni/techbleat-frontend:[^ ]*|jakeni/techbleat-frontend:${SHA}|g" \
-            k8s/apps/frontend.yaml
-
-      - name: Push branch and open PR
-        run: |
-          SHORT_SHA="${GITHUB_SHA:0:7}"
-          BRANCH="update-images-${SHORT_SHA}"
-
-          cd infra
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${BRANCH}"
-          git add k8s/apps/
-          git commit -m "chore: bump image tags to ${SHORT_SHA}"
-          git push origin "${BRANCH}"
-
-          gh pr create \
-            --title "chore: bump image tags to ${SHORT_SHA}" \
-            --body "Automated bump from app commit [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})." \
-            --base main \
-            --head "${BRANCH}"
-        env:
-          GH_TOKEN: ${{ secrets.INFRA_REPO_TOKEN }}
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${{ secrets.INFRA_REPO_PAT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/josephakeni/techbleat-infra/actions/workflows/deploy.yml/dispatches \
+            -d "{\"ref\":\"main\",\"inputs\":{\"image_tag\":\"${{ github.sha }}\"}}"
