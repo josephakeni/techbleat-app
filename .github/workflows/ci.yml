@@ -51,30 +51,15 @@ jobs:
   # ── Build & Push ───────────────────────────────────────────────────────────
 
   build-and-push:
-    name: Build & Push / ${{ matrix.service }}
+    name: Build & Push
     if: github.event_name == 'push'
     needs:
       - test-transaction-service
       - test-frontend
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - service: user-service
-            context: techbleat-global-bank-backend/user-service
-            image: jakeni/techbleat-user-service
-
-          - service: activity-service
-            context: techbleat-global-bank-backend/activity-service
-            image: jakeni/techbleat-activity-service
-
-          - service: transaction-service
-            context: techbleat-global-bank-backend/transaction-service
-            image: jakeni/techbleat-transaction-service
-
-          - service: frontend
-            context: techbleat-global-bank-frontend
-            image: jakeni/techbleat-frontend
+    defaults:
+      run:
+        working-directory: techbleat-global-bank-backend
 
     steps:
       - uses: actions/checkout@v4
@@ -86,16 +71,30 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.service }}
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ matrix.context }}
-          push: true
-          tags: |
-            ${{ matrix.image }}:${{ github.sha }}
-            ${{ matrix.image }}:latest
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Build backend images
+        run: make build TAG=${{ github.sha }}
+
+      # Uses build-frontend-k8s so VITE_* API URLs are baked in with NodePort addresses.
+      # Override HOST_IP via a repository variable if your node IP differs from the Makefile default.
+      - name: Build frontend image
+        run: make build-frontend-k8s TAG=${{ github.sha }} HOST_IP=${{ vars.HOST_IP || '192.168.0.10' }}
+
+      - name: Push backend images
+        run: make push TAG=${{ github.sha }}
+
+      - name: Push frontend image
+        run: docker push jakeni/techbleat-frontend:${{ github.sha }}
+
+      - name: Retag and push as latest
+        run: |
+          for img in \
+            jakeni/techbleat-user-service \
+            jakeni/techbleat-transaction-service \
+            jakeni/techbleat-activity-service \
+            jakeni/techbleat-frontend; do
+            docker tag "${img}:${{ github.sha }}" "${img}:latest"
+            docker push "${img}:latest"
+          done
 
   # ── Open Infra PR ──────────────────────────────────────────────────────────
 
