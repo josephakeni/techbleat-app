@@ -60,7 +60,7 @@ kafka: network
 	  -e KAFKA_LOG_DIRS=/tmp/kraft-combined-logs \
 	  -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
 	  -p 9092:9092 \
-	  confluentinc/cp-kafka:8.1.1
+	  confluentinc/cp-kafka:7.4.6
 
 .PHONY: infra
 infra: postgres redis kafka
